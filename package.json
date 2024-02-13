@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@tensorflow/tfjs": "^4.17.0",
+    "@tensorflow/tfjs-node": "^4.17.0",
+    "@tensorflow/tfjs-node-gpu": "^4.17.0",
     "prettier": "^3.2.4"
   }
 }
