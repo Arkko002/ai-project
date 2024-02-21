@@ -1,37 +1,56 @@
-import { layers, Sequential, gather_util } from "@tensorflow/tfjs-node-gpu";
+import { Scalar } from "@tensorflow/tfjs-node-gpu";
 
-async function run_cpu_benchmark() {
-  // Create a simple model.
-  const model = tf_C_CPU.sequential();
-  model.add(tf_C_CPU.layers.dense({ units: 1, inputShape: [1] }));
+import {
+  DatasetConfig,
+  ImageDataset,
+  getCatsDatasetConfig,
+  getDogsDatasetConfig,
+} from "./dataset";
+import { model } from "./model";
 
-  // Prepare the model for training: Specify the loss and the optimizer.
-  model.compile({ loss: "meanSquaredError", optimizer: "sgd" });
+async function run(epochs: number, batchSize: number, modelSavePath: string) {
+  const catsDatasetConfig: DatasetConfig = getCatsDatasetConfig();
+  const dogsDatasetConfig: DatasetConfig = getDogsDatasetConfig();
+  const dataset: ImageDataset = new ImageDataset([
+    catsDatasetConfig,
+    dogsDatasetConfig,
+  ]);
+  await dataset.initializeDataset();
 
-  // Generate some synthetic data for training. (y = 2x - 1)
-  const xs = tf_C_CPU.tensor2d([-1, 0, 1, 2, 3, 4], [6, 1]);
-  const ys = tf_C_CPU.tensor2d([-3, -1, 1, 3, 5, 7], [6, 1]);
+  model.summary();
 
-  // Train the model using the data.
-  await model.fit(xs, ys, { epochs: 250 });
+  const { images: trainImages, labels: trainLabels } = dataset.getTrainData();
+  console.log("Training Images (Shape): " + trainImages.shape);
+  console.log("Training Labels (Shape): " + trainLabels.shape);
 
-  console.log(tf_C_CPU.tensor2d([20], [1, 1]).dataSync());
+  const validationSplit: number = 0.15;
+  await model.fit(trainImages, trainLabels, {
+    epochs,
+    batchSize,
+    validationSplit,
+  });
+
+  const { images: testImages, labels: testLabels } = dataset.getTestData();
+  const evalOutput: Scalar | Scalar[] = model.evaluate(testImages, testLabels);
+
+  if (evalOutput instanceof Array) {
+    console.log(
+      `\nEvaluation result:\n` +
+        `  Loss = ${evalOutput[0].dataSync()[0].toFixed(3)}; ` +
+        `Accuracy = ${evalOutput[1].dataSync()[0].toFixed(3)}`,
+    );
+  } else {
+    console.log(
+      `\nEvaluation result:\n` +
+        `  Loss = ${evalOutput.dataSync()[0].toFixed(3)}; ` +
+        `Accuracy = ${evalOutput.dataSync()[0].toFixed(3)} `,
+    );
+  }
+
+  if (modelSavePath != null) {
+    await model.save(`file://${modelSavePath}`);
+    console.log(`Saved model to path: ${modelSavePath}`);
+  }
 }
 
-async function run_gpu_benchmark() {
-  // Create a simple model.
-  const model = tf_C_GPU.sequential();
-  model.add(tf_C_GPU.layers.dense({ units: 1, inputShape: [1] }));
-
-  // Prepare the model for training: Specify the loss and the optimizer.
-  model.compile({ loss: "meanSquaredError", optimizer: "sgd" });
-
-  // Generate some synthetic data for training. (y = 2x - 1)
-  const xs = tf_C_GPU.tensor2d([-1, 0, 1, 2, 3, 4], [6, 1]);
-  const ys = tf_C_GPU.tensor2d([-3, -1, 1, 3, 5, 7], [6, 1]);
-
-  // Train the model using the data.
-  await model.fit(xs, ys, { epochs: 250 });
-
-  console.log(tf_C_GPU.tensor2d([20], [1, 1]).dataSync());
-}
+run(10, 4, "./model");
